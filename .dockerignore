@@ -1,0 +1,6 @@
+.git
+.agents
+.codex
+docs
+__pycache__
+.pytest_cache
