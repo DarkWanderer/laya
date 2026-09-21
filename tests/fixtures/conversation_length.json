@@ -1,0 +1,41 @@
+{
+  "question_name": "department",
+  "question": {
+    "type": "choice",
+    "instructions": "Which team should handle the customer's current request?",
+    "criteria": {
+      "billing": "payments, invoices, and refunds",
+      "technical": "website errors, bugs, and outages",
+      "sales": "pricing and purchases"
+    }
+  },
+  "first_turn": {
+    "role": "user",
+    "content": "I was charged twice for my order. Please refund the duplicate payment."
+  },
+  "assistant_turn_template": "I am reviewing the case and will send update {update} after checking the details.",
+  "user_turn": {
+    "role": "user",
+    "content": "Thank you. I can wait for the update; there is nothing else to add right now."
+  },
+  "correction_turn": {
+    "role": "user",
+    "content": "Update: the duplicate charge has been refunded and is resolved. My current request is technical support: our website returns HTTP 500 for every user. Please fix the outage."
+  },
+  "checkpoints": [
+    {"label": "0 pairs", "pairs": 0},
+    {"label": "1 pair", "pairs": 1},
+    {"label": "2 pairs", "pairs": 2},
+    {"label": "4 pairs", "pairs": 4},
+    {"label": "6 pairs", "pairs": 6},
+    {"label": "7 pairs", "pairs": 7},
+    {"label": "7 pairs + assistant", "pairs": 7, "extra_assistant": true},
+    {"label": "8 pairs", "pairs": 8},
+    {"label": "10 pairs", "pairs": 10},
+    {"label": "16 pairs", "pairs": 16},
+    {"label": "24 pairs", "pairs": 24},
+    {"label": "64 pairs", "pairs": 64},
+    {"label": "128 pairs", "pairs": 128}
+  ],
+  "expected_control": {"base": "billing", "with_correction": "technical"}
+}

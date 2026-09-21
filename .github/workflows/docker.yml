@@ -1,0 +1,31 @@
+name: Docker image
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Free space for CUDA dependencies
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/hostedtoolcache
+
+      - name: Build image
+        run: docker build -t laya-local-api:ci .
+
+      - name: Run tests in image
+        run: >-
+          docker run --rm --read-only --tmpfs /tmp:rw,nosuid,nodev,size=1g
+          --network none laya-local-api:ci
+          python -m pytest -q -p no:cacheprovider /app/tests

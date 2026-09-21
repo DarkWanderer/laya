@@ -1,24 +1,26 @@
 # Local Laya API
 
-This service runs the English `convaiinnovations/laya` checkpoint on CPU. The image installs `laya==0.3.5` and downloads checkpoint revision `1c5edc17a7acd8701df6fc341c0d179f1c62c982` during the build. Neither Python nor the model is installed on the host. Model startup uses local files with `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1`.
+This service runs the English `convaiinnovations/laya` checkpoint on an NVIDIA GPU. The image installs CUDA PyTorch and `laya==0.3.5`, and downloads checkpoint revision `1c5edc17a7acd8701df6fc341c0d179f1c62c982` during the build. Neither Python nor the model is installed on the host. Model startup uses local files with `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1`. The host needs an NVIDIA driver and Docker GPU support.
 
 The container has one worker and runs as an unprivileged user. The published port listens on the host's loopback address only. It has a read-only filesystem and a temporary `/tmp`; the run command mounts neither this folder nor the Docker socket.
 
 ## Build and test
 
 ```sh
-docker build -t laya-local-api:0.3.5 .
-docker run --rm --read-only --tmpfs /tmp:rw,nosuid,nodev,size=1g \
-  --network none laya-local-api:0.3.5 python -m pytest -q -p no:cacheprovider /app/tests
+docker build -t laya-local-api:0.3.5-gpu .
+docker run --rm --gpus all --read-only --tmpfs /tmp:rw,nosuid,nodev,size=1g \
+  --network none laya-local-api:0.3.5-gpu python -m pytest -q -p no:cacheprovider /app/tests
+docker run --rm --gpus all --read-only --tmpfs /tmp:rw,nosuid,nodev,size=1g \
+  --network none laya-local-api:0.3.5-gpu python -c 'import torch; assert torch.cuda.is_available(); print(torch.cuda.get_device_name(0))'
 ```
 
 ## Start
 
 ```sh
 docker run -d --name laya-local-api \
-  --read-only --tmpfs /tmp:rw,nosuid,nodev,size=1g \
+  --gpus all --read-only --tmpfs /tmp:rw,nosuid,nodev,size=1g \
   --cap-drop=ALL --security-opt=no-new-privileges \
-  -p 127.0.0.1:8000:8000 laya-local-api:0.3.5
+  -p 127.0.0.1:8000:8000 laya-local-api:0.3.5-gpu
 curl --fail http://127.0.0.1:8000/healthz
 ```
 
@@ -34,6 +36,23 @@ curl --fail-with-body http://127.0.0.1:8000/predict \
 
 `state` may be a string, JSON object, or conversation list. `questions` maps names to `choice`, `score`, or `noul` definitions. The response is Laya's native JSON, including its probabilities and usage. The shipped probabilities need task-specific calibration before use in automated decisions; see [Laya's model documentation](https://github.com/NandhaKishorM/laya#calibration).
 
+Before inference, the API uses Laya's tokenizer and sequence builder to check each question against the checkpoint's 512-token input limit. If the full sequence would exceed that limit, `/predict` returns HTTP 422 with the question name and required token count instead of silently dropping the end of the conversation. Laya's separate question-head limits still apply to very long instructions or criteria.
+
+## Probe conversation length
+
+The [conversation fixture](../tests/fixtures/conversation_length.json) fixes one routing question and all turn text. The [probe script](../bench/conversation_length.py) extends that conversation at each checkpoint, then sends the same final technical-support correction. It runs in a separate container against the live GPU API; the two source mounts are read-only and used only by the probe.
+
+```sh
+docker run --rm --read-only --tmpfs /tmp:rw,nosuid,nodev,size=1g \
+  --cap-drop=ALL --security-opt=no-new-privileges \
+  --network container:laya-local-api \
+  --mount type=bind,source="$PWD/bench",target=/app/bench,readonly \
+  --mount type=bind,source="$PWD/tests/fixtures",target=/app/tests/fixtures,readonly \
+  laya-local-api:0.3.5-gpu python /app/bench/conversation_length.py
+```
+
+With this checkpoint and question, the 512-token model limit leaves 467 tokens for the conversation. The short correction changes the route from billing to technical. Appending it after seven back-and-forth pairs needs 516 tokens and returns HTTP 422; the uncorrected eight-pair conversation needs 527 tokens and also returns 422. Before the API check, those inputs returned HTTP 200 after Laya silently dropped the end of the conversation. These are observations from this synthetic fixture, not an accuracy benchmark.
+
 ## Measure warm latency and stop
 
 ```sh
@@ -42,4 +61,4 @@ docker stop laya-local-api
 docker rm laya-local-api
 ```
 
-The benchmark reports local HTTP round-trip latency in milliseconds. Results depend on the host's CPU and competing load.
+The benchmark reports local HTTP round-trip latency in milliseconds. Results depend on the GPU and competing load.

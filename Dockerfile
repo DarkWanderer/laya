@@ -10,8 +10,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install CPU-only PyTorch before Laya so pip can reuse it.
-RUN pip install --no-cache-dir 'torch==2.9.1+cpu' --index-url https://download.pytorch.org/whl/cpu \
+# Install CUDA PyTorch before Laya so pip can reuse it.
+RUN pip install --no-cache-dir 'torch==2.9.1+cu128' --index-url https://download.pytorch.org/whl/cu128 \
     && pip install --no-cache-dir 'laya==0.3.5' 'fastapi>=0.115,<1' 'uvicorn>=0.34,<1' 'pytest>=8,<10' 'httpx>=0.27,<1'
 
 COPY download_model.py /app/download_model.py

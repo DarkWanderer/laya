@@ -2,6 +2,7 @@
 
 import asyncio
 from contextlib import asynccontextmanager
+from sys import maxsize
 from typing import Annotated, Any, Callable, Literal
 
 from fastapi import FastAPI, HTTPException
@@ -45,10 +46,33 @@ class PredictRequest(BaseModel):
     questions: dict[str, Question] = Field(min_length=1)
 
 
+class LengthCheckedAgent:
+    def __init__(self, agent):
+        self.agent = agent
+
+    def predict(self, state, questions):
+        from laya.common import build_sequence
+
+        max_len = self.agent.cfg.get("max_len", 512)
+        head_max_len = self.agent.cfg.get("head_max_len", 192)
+        for name, question in questions.items():
+            # Use Laya's own formatter without its final slice so overflow is visible.
+            sequence, _ = build_sequence(
+                self.agent.tok,
+                state,
+                self.agent._to_internal(question),
+                max_len=maxsize,
+                head_max_len=head_max_len,
+            )
+            if len(sequence) > max_len:
+                raise ValueError(f"question {name!r} needs {len(sequence)} tokens, exceeding the model limit of {max_len}")
+        return self.agent.predict(state, questions)
+
+
 def load_agent():
     import laya
 
-    return laya.load("/opt/model", device="cpu")
+    return LengthCheckedAgent(laya.load("/opt/model", device="cuda"))
 
 
 def create_app(loader: Callable[[], Any] = load_agent) -> FastAPI:
