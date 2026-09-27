@@ -10,11 +10,11 @@ on:
 permissions:
   contents: read
 
-# Runs on main are queued in order so an older build cannot overwrite `latest`
-# after a newer one; superseded pull request runs are cancelled.
+# Superseded pull request runs are cancelled. Every other run gets its own group,
+# so each commit on main is published by its own run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   build-and-test:
@@ -52,8 +52,16 @@ jobs:
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
           echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          for tag in latest "sha-${GITHUB_SHA::7}"; do
-            docker tag laya-local-api:ci "$image:$tag"
-            docker push "$image:$tag"
-          done
+          docker tag laya-local-api:ci "$image:sha-${GITHUB_SHA::7}"
+          docker push "$image:sha-${GITHUB_SHA::7}"
+          # Runs can finish out of order; move `latest` only if this commit is still the head of main.
+          head=$(curl -fsSL -H "Authorization: Bearer $GHCR_TOKEN" \
+            -H "Accept: application/vnd.github.sha" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/commits/main")
+          if [ "$head" = "$GITHUB_SHA" ]; then
+            docker tag laya-local-api:ci "$image:latest"
+            docker push "$image:latest"
+          else
+            echo "main is at $head; not updating latest"
+          fi
           docker logout ghcr.io
