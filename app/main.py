@@ -1,6 +1,7 @@
 """Local HTTP boundary for the English Laya checkpoint, shaped like OpenRouter's Decisions API."""
 
 import asyncio
+import json
 from contextlib import asynccontextmanager
 from sys import maxsize
 from typing import Annotated, Any, Callable, Literal
@@ -18,19 +19,21 @@ MODEL_ID = "convaiinnovations/laya"
 
 # A plain string, or a JSON object or array of structured guidance.
 Guidance = StrictStr | dict[str, Any] | list[Any]
+# Instructions are the question itself, so an empty one is a client error.
+Instructions = Annotated[StrictStr, Field(min_length=1)] | Annotated[dict[str, Any], Field(min_length=1)] | Annotated[list[Any], Field(min_length=1)]
 
 
 class ChoiceQuestion(BaseModel):
     model_config = ConfigDict(extra="forbid")
     type: Literal["choice"]
-    instructions: Guidance
+    instructions: Instructions
     criteria: dict[StrictStr, Guidance | None] = Field(min_length=1)
 
 
 class ScoreQuestion(BaseModel):
     model_config = ConfigDict(extra="forbid")
     type: Literal["score"]
-    instructions: Guidance
+    instructions: Instructions
     criteria: list[Guidance] = Field(min_length=1)
 
 
@@ -43,7 +46,7 @@ class NoulCriteria(BaseModel):
 class NoulQuestion(BaseModel):
     model_config = ConfigDict(extra="forbid")
     type: Literal["noul"]
-    instructions: Guidance
+    instructions: Instructions
     criteria: NoulCriteria | None = None
 
 
@@ -141,7 +144,8 @@ def create_app(loader: Callable[[], Any] = load_agent) -> FastAPI:
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(request: Request, exc: StarletteHTTPException):
-        return error_response(exc.status_code, str(exc.detail), exc.headers)
+        message = exc.detail if isinstance(exc.detail, str) else json.dumps(exc.detail)
+        return error_response(exc.status_code, message, exc.headers)
 
     @app.exception_handler(Exception)
     async def internal_error(request: Request, exc: Exception):

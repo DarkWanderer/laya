@@ -98,6 +98,9 @@ def test_decisions_accepts_openrouter_request_fields():
         {"model": MODEL, "state": "text", "questions": {"q": {"type": "noul", "instructions": "x", "criteria": []}}},
         {"model": MODEL, "state": "text", "questions": {"q": {"type": "noul", "instructions": "x", "criteria": {"true": "yes"}}}},
         {"model": MODEL, "state": "text", "questions": {"q": {"type": "noul", "instructions": 4}}},
+        {"model": MODEL, "state": "text", "questions": {"q": {"type": "noul", "instructions": ""}}},
+        {"model": MODEL, "state": "text", "questions": {"q": {"type": "choice", "instructions": {}, "criteria": {"a": None}}}},
+        {"model": MODEL, "state": "text", "questions": {"q": {"type": "score", "instructions": [], "criteria": ["a"]}}},
         {"model": MODEL, "state": 4, "questions": {"q": {"type": "noul", "instructions": "x"}}},
         {"model": MODEL, "state": "text", "questions": {"q": {"type": "noul", "instructions": "x"}}, "session_id": "s" * 257},
         {"state": "text", "questions": {"q": {"type": "noul", "instructions": "x"}}},
@@ -121,6 +124,32 @@ def test_unknown_route_uses_error_shape():
         wrong_method = client.get(URL)
         assert wrong_method.json() == {"error": {"code": 405, "message": "Method Not Allowed"}}
         assert wrong_method.headers["allow"] == "POST"
+
+
+def test_structured_http_error_detail_is_json():
+    app = create_app(FakeAgent)
+
+    @app.get("/structured")
+    async def structured():
+        raise api.HTTPException(status_code=409, detail={"reason": "busy"})
+
+    with TestClient(app) as client:
+        assert client.get("/structured").json() == {"error": {"code": 409, "message": '{"reason": "busy"}'}}
+
+
+class FailingAgent:
+    def predict(self, state, questions):
+        raise KeyError("boom")
+
+
+def test_unhandled_error_still_propagates_for_logging():
+    body = {"model": MODEL, "state": "text", "questions": {"q": {"type": "noul", "instructions": "x"}}}
+    # Starlette re-raises after the handler responds, so uvicorn still logs the traceback.
+    with pytest.raises(KeyError, match="boom"):
+        with TestClient(create_app(FailingAgent)) as client:
+            client.post(URL, json=body)
+    with TestClient(create_app(FailingAgent), raise_server_exceptions=False) as client:
+        assert client.post(URL, json=body).json() == {"error": {"code": 500, "message": "Internal Server Error"}}
 
 
 def test_startup_fails_if_model_does_not_load():
