@@ -10,10 +10,10 @@ on:
 permissions:
   contents: read
 
-# Superseded pull request runs are cancelled. Every other run gets its own group,
-# so each commit on main is published by its own run.
+# A newer run on the same branch cancels an older one, so on main only the
+# newest commit's run gets to publish `latest`.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -51,40 +51,15 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
-          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          docker tag laya-local-api:ci "$image:sha-$GITHUB_SHA"
-          docker push "$image:sha-$GITHUB_SHA"
-          docker logout ghcr.io
-
-  # Moves `latest` to the image of the current head of main, whichever run gets
-  # here. Only one job runs at a time, and GitHub keeps a single pending job that
-  # a newer one may replace, so any job that runs must bring `latest` up to the
-  # head rather than to its own commit. If the head's image is not pushed yet,
-  # the head's own run will queue this job after pushing it.
-  tag-latest:
-    needs: build-and-test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      packages: write
-    concurrency:
-      group: ghcr-latest
-      cancel-in-progress: false
-    steps:
-      - name: Point latest at the head of main
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          # Runs can start out of order; publish only if this commit is still the head of main.
           head=$(curl -fsSL -H "Authorization: Bearer $GHCR_TOKEN" \
             -H "Accept: application/vnd.github.sha" \
             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/commits/main")
-          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          # This run pushed its own image, so only another commit's image may be missing.
-          if [ "$head" = "$GITHUB_SHA" ] || docker buildx imagetools inspect "$image:sha-$head" > /dev/null 2>&1; then
-            docker buildx imagetools create -t "$image:latest" "$image:sha-$head"
-          else
-            echo "No image for head $head yet; its own run will update latest"
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "main is at $head; not publishing"
+            exit 0
           fi
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker tag laya-local-api:ci "$image:latest"
+          docker push "$image:latest"
           docker logout ghcr.io

@@ -6,7 +6,7 @@ The container has one worker and runs as an unprivileged user. The published por
 
 ## Prebuilt image
 
-Each push to `main` publishes the tested image to `ghcr.io/darkwanderer/laya` with the tags `latest` and `sha-<full commit SHA>`. To use it, pull it and tag it with the local name used below. New GHCR packages are private. Until a maintainer makes the package public in its settings, run `docker login ghcr.io` first, using a GitHub token with the `read:packages` scope as the password.
+Each push to `main` publishes the tested image to `ghcr.io/darkwanderer/laya` with the tag `latest`. To use it, pull it and tag it with the local name used below. New GHCR packages are private. Until a maintainer makes the package public in its settings, run `docker login ghcr.io` first, using a GitHub token with the `read:packages` scope as the password.
 
 ```sh
 docker pull ghcr.io/darkwanderer/laya:latest
