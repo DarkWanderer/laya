@@ -54,14 +54,34 @@ jobs:
           echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           docker tag laya-local-api:ci "$image:sha-${GITHUB_SHA::7}"
           docker push "$image:sha-${GITHUB_SHA::7}"
-          # Runs can finish out of order; move `latest` only if this commit is still the head of main.
+          docker logout ghcr.io
+
+  # Only one run at a time may move `latest`, and it moves it only if its commit
+  # is still the head of main. A run that finishes after a newer one sees a
+  # different head and leaves `latest` alone.
+  tag-latest:
+    needs: build-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: ghcr-latest
+      cancel-in-progress: false
+    steps:
+      - name: Point latest at this commit's image
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
           head=$(curl -fsSL -H "Authorization: Bearer $GHCR_TOKEN" \
             -H "Accept: application/vnd.github.sha" \
             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/commits/main")
-          if [ "$head" = "$GITHUB_SHA" ]; then
-            docker tag laya-local-api:ci "$image:latest"
-            docker push "$image:latest"
-          else
+          if [ "$head" != "$GITHUB_SHA" ]; then
             echo "main is at $head; not updating latest"
+            exit 0
           fi
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker buildx imagetools create -t "$image:latest" "$image:sha-${GITHUB_SHA::7}"
           docker logout ghcr.io
