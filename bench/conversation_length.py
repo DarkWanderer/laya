@@ -24,19 +24,19 @@ def build_conversation(fixture, checkpoint):
     return turns
 
 
-def predict(url, question_name, question, turns, timeout):
-    payload = json.dumps({"state": turns, "questions": {question_name: question}}, ensure_ascii=False).encode()
+def decide(url, question_name, question, turns, timeout):
+    payload = json.dumps({"model": "convaiinnovations/laya", "state": turns, "questions": {question_name: question}}, ensure_ascii=False).encode()
     request = Request(url, data=payload, headers={"Content-Type": "application/json"})
     start = time.perf_counter()
     try:
         with urlopen(request, timeout=timeout) as response:
             result = json.load(response)
     except HTTPError as exc:
-        if exc.code != 422:
+        if exc.code != 400:
             raise
         return {
             "status": exc.code,
-            "detail": json.load(exc)["detail"],
+            "message": json.load(exc)["error"]["message"],
             "latency_ms": round((time.perf_counter() - start) * 1000, 1),
             "payload_sha256": hashlib.sha256(payload).hexdigest(),
         }
@@ -55,7 +55,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE)
     parser.add_argument("--model-dir", type=Path, default=Path("/opt/model"))
-    parser.add_argument("--url", default="http://127.0.0.1:8000/predict")
+    parser.add_argument("--url", default="http://127.0.0.1:8000/api/alpha/decisions")
     parser.add_argument("--timeout", type=float, default=120)
     args = parser.parse_args()
 
@@ -71,8 +71,8 @@ def main():
             raise ValueError(f"checkpoint {checkpoint['label']!r} is not an extension of the previous conversation")
         previous_turns = turns
         raw_state_tokens = len(tokenizer(json.dumps(turns, ensure_ascii=False), add_special_tokens=False)["input_ids"])
-        base = predict(args.url, fixture["question_name"], fixture["question"], turns, args.timeout)
-        corrected = predict(args.url, fixture["question_name"], fixture["question"], turns + [fixture["correction_turn"]], args.timeout)
+        base = decide(args.url, fixture["question_name"], fixture["question"], turns, args.timeout)
+        corrected = decide(args.url, fixture["question_name"], fixture["question"], turns + [fixture["correction_turn"]], args.timeout)
         row = {
             "checkpoint": checkpoint["label"],
             "turns": len(turns),
@@ -95,8 +95,8 @@ def main():
 
     prefix_tokens = rows[0]["base"]["used_tokens"] - rows[0]["raw_state_tokens"]
     state_budget = config["max_len"] - prefix_tokens
-    first_rejected_base = next((row["checkpoint"] for row in rows if row["base"]["status"] == 422), None)
-    first_rejected_correction = next((row["checkpoint"] for row in rows if row["with_final_correction"]["status"] == 422), None)
+    first_rejected_base = next((row["checkpoint"] for row in rows if row["base"]["status"] == 400), None)
+    first_rejected_correction = next((row["checkpoint"] for row in rows if row["with_final_correction"]["status"] == 400), None)
     first_ignored = next((row["checkpoint"] for row in rows if row["raw_state_tokens"] >= state_budget and row["correction_changed_output"] is False), None)
     print(json.dumps({"summary": {
         "model_max_tokens": config["max_len"],

@@ -8,6 +8,7 @@ from urllib.request import Request, urlopen
 
 
 PAYLOAD = {
+    "model": "convaiinnovations/laya",
     "state": {"body": "I was charged twice for my order. Please refund the duplicate charge."},
     "questions": {"refund": {"type": "noul", "instructions": "Does the customer request a refund?"}},
 }
@@ -15,7 +16,7 @@ PAYLOAD = {
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--url", default="http://127.0.0.1:8000/predict")
+    parser.add_argument("--url", default="http://127.0.0.1:8000/api/alpha/decisions")
     parser.add_argument("--warmup", type=int, default=3)
     parser.add_argument("--samples", type=int, default=10)
     args = parser.parse_args()
@@ -30,7 +31,7 @@ def main():
             result = json.load(response)
         elapsed_ms = (time.perf_counter() - start) * 1000
         if "answers" not in result:
-            raise RuntimeError("prediction response had no answers")
+            raise RuntimeError("decisions response had no answers")
         if index >= args.warmup:
             timings.append(elapsed_ms)
 

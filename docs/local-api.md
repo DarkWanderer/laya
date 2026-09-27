@@ -26,17 +26,23 @@ curl --fail http://127.0.0.1:8000/healthz
 
 Loading the model can take several seconds. API documentation is at <http://127.0.0.1:8000/docs> and the OpenAPI schema is at <http://127.0.0.1:8000/openapi.json>.
 
-## Predict
+## Decide
+
+The API follows the request and response shape of OpenRouter's [Decisions API](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request) at the same path, so a Decisions client can point its base URL at this service.
 
 ```sh
-curl --fail-with-body http://127.0.0.1:8000/predict \
+curl --fail-with-body http://127.0.0.1:8000/api/alpha/decisions \
   -H 'Content-Type: application/json' \
-  -d '{"state":{"body":"I was charged twice. Please refund the duplicate charge."},"questions":{"department":{"type":"choice","instructions":"Which team should handle this?","criteria":{"billing":"invoices and refunds","other":"other requests"}},"urgency":{"type":"score","instructions":"How urgent is this?","criteria":["low","medium","high"]},"refund":{"type":"noul","instructions":"Does the customer request a refund?"}}}'
+  -d '{"model":"convaiinnovations/laya","state":{"body":"I was charged twice. Please refund the duplicate charge."},"questions":{"department":{"type":"choice","instructions":"Which team should handle this?","criteria":{"billing":"invoices and refunds","other":"other requests"}},"urgency":{"type":"score","instructions":"How urgent is this?","criteria":["low","medium","high"]},"refund":{"type":"noul","instructions":"Does the customer request a refund?","criteria":{"true":"asks for money back","false":"anything else"}}}}'
 ```
 
-`state` may be a string, JSON object, or conversation list. `questions` maps names to `choice`, `score`, or `noul` definitions. The response is Laya's native JSON, including its probabilities and usage. The shipped probabilities need task-specific calibration before use in automated decisions; see [Laya's model documentation](https://github.com/NandhaKishorM/laya#calibration).
+`model` must be `convaiinnovations/laya`. `state` may be a string, JSON object, or conversation list. `questions` maps names to `choice`, `score`, or `noul` definitions; `instructions` and each criterion may be a string or structured JSON. `choice` criteria are an object of option names to descriptions (`null` for none), `score` criteria are an ordered list, and `noul` criteria are optional `true` and `false` descriptions. `provider`, `session_id`, `trace`, and `user` are accepted for compatibility and ignored. No `Authorization` header is needed.
 
-Before inference, the API uses Laya's tokenizer and sequence builder to check each question against the checkpoint's 512-token input limit. If the full sequence would exceed that limit, `/predict` returns HTTP 422 with the question name and required token count instead of silently dropping the end of the conversation. Laya's separate question-head limits still apply to very long instructions or criteria.
+The response carries `id`, `model`, `answers`, and `usage` with `input_tokens` and `output_tokens`. `choice` answers carry `choice`, `confidence`, and `probabilities`; `score` answers carry `score`, `confidence`, `legend`, and `probabilities`; `noul` answers carry the `noul` probability. The response omits `provider` and `usage.cost`, and drops Laya's `action` field and `noul` confidence. The shipped probabilities need task-specific calibration before use in automated decisions; see [Laya's model documentation](https://github.com/NandhaKishorM/laya#calibration).
+
+Errors use OpenRouter's shape, `{"error":{"code":400,"message":"..."}}`. Invalid requests, including an unknown `model`, return HTTP 400.
+
+Before inference, the API uses Laya's tokenizer and sequence builder to check each question against the checkpoint's 512-token input limit. If the full sequence would exceed that limit, the API returns HTTP 400 with the question name and required token count instead of silently dropping the end of the conversation. Laya's separate question-head limits still apply to very long instructions or criteria.
 
 ## Probe conversation length
 
@@ -51,7 +57,7 @@ docker run --rm --read-only --tmpfs /tmp:rw,nosuid,nodev,size=1g \
   laya-local-api:0.3.5-gpu python /app/bench/conversation_length.py
 ```
 
-With this checkpoint and question, the 512-token model limit leaves 467 tokens for the conversation. The short correction changes the route from billing to technical. Appending it after seven back-and-forth pairs needs 516 tokens and returns HTTP 422; the uncorrected eight-pair conversation needs 527 tokens and also returns 422. Before the API check, those inputs returned HTTP 200 after Laya silently dropped the end of the conversation. These are observations from this synthetic fixture, not an accuracy benchmark.
+With this checkpoint and question, the 512-token model limit leaves 467 tokens for the conversation. The short correction changes the route from billing to technical. Appending it after seven back-and-forth pairs needs 516 tokens and is rejected; the uncorrected eight-pair conversation needs 527 tokens and is also rejected. Before the API check, those inputs returned HTTP 200 after Laya silently dropped the end of the conversation. These are observations from this synthetic fixture, not an accuracy benchmark.
 
 ## Measure warm latency and stop
 
