@@ -10,6 +10,12 @@ on:
 permissions:
   contents: read
 
+# Runs on main are queued in order so an older build cannot overwrite `latest`
+# after a newer one; superseded pull request runs are cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build-and-test:
     runs-on: ubuntu-24.04
