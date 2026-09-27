@@ -52,8 +52,8 @@ jobs:
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
           echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          docker tag laya-local-api:ci "$image:sha-${GITHUB_SHA::7}"
-          docker push "$image:sha-${GITHUB_SHA::7}"
+          docker tag laya-local-api:ci "$image:sha-$GITHUB_SHA"
+          docker push "$image:sha-$GITHUB_SHA"
           docker logout ghcr.io
 
   # Moves `latest` to the image of the current head of main, whichever run gets
@@ -82,8 +82,8 @@ jobs:
             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/commits/main")
           echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           # This run pushed its own image, so only another commit's image may be missing.
-          if [ "$head" = "$GITHUB_SHA" ] || docker buildx imagetools inspect "$image:sha-${head::7}" > /dev/null 2>&1; then
-            docker buildx imagetools create -t "$image:latest" "$image:sha-${head::7}"
+          if [ "$head" = "$GITHUB_SHA" ] || docker buildx imagetools inspect "$image:sha-$head" > /dev/null 2>&1; then
+            docker buildx imagetools create -t "$image:latest" "$image:sha-$head"
           else
             echo "No image for head $head yet; its own run will update latest"
           fi
