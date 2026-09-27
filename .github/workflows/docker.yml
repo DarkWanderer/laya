@@ -10,9 +10,18 @@ on:
 permissions:
   contents: read
 
+# A newer run on the same branch cancels an older one, so on main only the
+# newest commit's run gets to publish `latest`.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -24,10 +33,33 @@ jobs:
           df -h /
 
       - name: Build image
-        run: docker build -t laya-local-api:ci .
+        run: >-
+          docker build -t laya-local-api:ci
+          --label org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          --label org.opencontainers.image.revision=${{ github.sha }}
+          .
 
       - name: Run tests in image
         run: >-
           docker run --rm --read-only --tmpfs /tmp:rw,nosuid,nodev,size=1g
           --network none laya-local-api:ci
           python -m pytest -q -p no:cacheprovider /app/tests
+
+      - name: Publish image to GHCR
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          # Runs can start out of order; publish only if this commit is still the head of main.
+          head=$(curl -fsSL -H "Authorization: Bearer $GHCR_TOKEN" \
+            -H "Accept: application/vnd.github.sha" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/commits/main")
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "main is at $head; not publishing"
+            exit 0
+          fi
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker tag laya-local-api:ci "$image:latest"
+          docker push "$image:latest"
+          docker logout ghcr.io

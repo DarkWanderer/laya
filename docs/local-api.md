@@ -4,6 +4,15 @@ This service runs the English `convaiinnovations/laya` checkpoint on an NVIDIA G
 
 The container has one worker and runs as an unprivileged user. The published port listens on the host's loopback address only. It has a read-only filesystem and a temporary `/tmp`; the run command mounts neither this folder nor the Docker socket.
 
+## Prebuilt image
+
+Each push to `main` publishes the tested image to `ghcr.io/darkwanderer/laya` with the tag `latest`. To use it, pull it and tag it with the local name used below. New GHCR packages are private. Until a maintainer makes the package public in its settings, run `docker login ghcr.io` first, using a GitHub token with the `read:packages` scope as the password.
+
+```sh
+docker pull ghcr.io/darkwanderer/laya:latest
+docker tag ghcr.io/darkwanderer/laya:latest laya-local-api:0.3.5-gpu
+```
+
 ## Build and test
 
 ```sh
