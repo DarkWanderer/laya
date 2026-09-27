@@ -13,6 +13,9 @@ permissions:
 jobs:
   build-and-test:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -24,10 +27,27 @@ jobs:
           df -h /
 
       - name: Build image
-        run: docker build -t laya-local-api:ci .
+        run: >-
+          docker build -t laya-local-api:ci
+          --label org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          --label org.opencontainers.image.revision=${{ github.sha }}
+          .
 
       - name: Run tests in image
         run: >-
           docker run --rm --read-only --tmpfs /tmp:rw,nosuid,nodev,size=1g
           --network none laya-local-api:ci
           python -m pytest -q -p no:cacheprovider /app/tests
+
+      - name: Publish image to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          for tag in latest "sha-${GITHUB_SHA::7}"; do
+            docker tag laya-local-api:ci "$image:$tag"
+            docker push "$image:$tag"
+          done
+          docker logout ghcr.io
