@@ -1,0 +1,4 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: ["github>voron-software/.github:renovate.json5"],
+}
