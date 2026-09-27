@@ -46,7 +46,7 @@ jobs:
           python -m pytest -q -p no:cacheprovider /app/tests
 
       - name: Publish image to GHCR
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
