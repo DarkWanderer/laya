@@ -56,9 +56,11 @@ jobs:
           docker push "$image:sha-${GITHUB_SHA::7}"
           docker logout ghcr.io
 
-  # Only one run at a time may move `latest`, and it moves it only if its commit
-  # is still the head of main. A run that finishes after a newer one sees a
-  # different head and leaves `latest` alone.
+  # Moves `latest` to the image of the current head of main, whichever run gets
+  # here. Only one job runs at a time, and GitHub keeps a single pending job that
+  # a newer one may replace, so any job that runs must bring `latest` up to the
+  # head rather than to its own commit. If the head's image is not pushed yet,
+  # the head's own run will queue this job after pushing it.
   tag-latest:
     needs: build-and-test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -70,7 +72,7 @@ jobs:
       group: ghcr-latest
       cancel-in-progress: false
     steps:
-      - name: Point latest at this commit's image
+      - name: Point latest at the head of main
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -78,10 +80,11 @@ jobs:
           head=$(curl -fsSL -H "Authorization: Bearer $GHCR_TOKEN" \
             -H "Accept: application/vnd.github.sha" \
             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/commits/main")
-          if [ "$head" != "$GITHUB_SHA" ]; then
-            echo "main is at $head; not updating latest"
-            exit 0
-          fi
           echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          docker buildx imagetools create -t "$image:latest" "$image:sha-${GITHUB_SHA::7}"
+          # This run pushed its own image, so only another commit's image may be missing.
+          if [ "$head" = "$GITHUB_SHA" ] || docker buildx imagetools inspect "$image:sha-${head::7}" > /dev/null 2>&1; then
+            docker buildx imagetools create -t "$image:latest" "$image:sha-${head::7}"
+          else
+            echo "No image for head $head yet; its own run will update latest"
+          fi
           docker logout ghcr.io
