@@ -84,8 +84,8 @@ def to_decisions_response(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def error_response(code: int, message: str) -> JSONResponse:
-    return JSONResponse(status_code=code, content={"error": {"code": code, "message": message}})
+def error_response(code: int, message: str, headers: dict[str, str] | None = None) -> JSONResponse:
+    return JSONResponse(status_code=code, content={"error": {"code": code, "message": message}}, headers=headers)
 
 
 def describe_validation_error(exc: RequestValidationError) -> str:
@@ -141,7 +141,7 @@ def create_app(loader: Callable[[], Any] = load_agent) -> FastAPI:
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(request: Request, exc: StarletteHTTPException):
-        return error_response(exc.status_code, str(exc.detail))
+        return error_response(exc.status_code, str(exc.detail), exc.headers)
 
     @app.exception_handler(Exception)
     async def internal_error(request: Request, exc: Exception):

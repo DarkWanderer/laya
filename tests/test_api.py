@@ -118,6 +118,9 @@ def test_invalid_input_is_rejected(body):
 def test_unknown_route_uses_error_shape():
     with TestClient(create_app(FakeAgent)) as client:
         assert client.post("/predict", json={}).json() == {"error": {"code": 404, "message": "Not Found"}}
+        wrong_method = client.get(URL)
+        assert wrong_method.json() == {"error": {"code": 405, "message": "Method Not Allowed"}}
+        assert wrong_method.headers["allow"] == "POST"
 
 
 def test_startup_fails_if_model_does_not_load():
