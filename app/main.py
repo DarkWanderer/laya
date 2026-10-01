@@ -1,4 +1,4 @@
-"""Local HTTP boundary for the English Laya checkpoint, shaped like OpenRouter's Decisions API."""
+"""Local HTTP boundary for the multilingual Laya checkpoint, shaped like OpenRouter's Decisions API."""
 
 import asyncio
 import json
@@ -15,7 +15,9 @@ from pydantic import BaseModel, ConfigDict, Field, StrictStr
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 
-MODEL_ID = "convaiinnovations/laya"
+MODEL_ID = "convaiinnovations/laya-multilingual"
+# The checkpoint ships a 1024-token window; its mmBERT encoder supports up to 8192, so longer conversations fit.
+MAX_LEN = 4096
 
 # A plain string, or a JSON object or array of structured guidance.
 Guidance = StrictStr | dict[str, Any] | list[Any]
@@ -125,7 +127,10 @@ class LengthCheckedAgent:
 def load_agent():
     import laya
 
-    return LengthCheckedAgent(laya.load("/opt/model", device="cuda"))
+    agent = laya.load("/opt/model", device="cuda")
+    # Laya reads the window from cfg on every predict, so the override applies to inference and the length check alike.
+    agent.cfg["max_len"] = MAX_LEN
+    return LengthCheckedAgent(agent)
 
 
 def create_app(loader: Callable[[], Any] = load_agent) -> FastAPI:

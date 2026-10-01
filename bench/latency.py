@@ -8,7 +8,7 @@ from urllib.request import Request, urlopen
 
 
 PAYLOAD = {
-    "model": "convaiinnovations/laya",
+    "model": "convaiinnovations/laya-multilingual",
     "state": {"body": "I was charged twice for my order. Please refund the duplicate charge."},
     "questions": {"refund": {"type": "noul", "instructions": "Does the customer request a refund?"}},
 }

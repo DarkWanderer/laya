@@ -16,7 +16,7 @@ RUN pip install --no-cache-dir 'torch==2.9.1+cu128' --index-url https://download
 
 COPY download_model.py /app/download_model.py
 RUN HF_HUB_OFFLINE=0 python /app/download_model.py \
-    && rm -rf /opt/model/.cache /root/.cache
+    && rm -rf /root/.cache
 
 COPY app /app/app
 COPY tests /app/tests
