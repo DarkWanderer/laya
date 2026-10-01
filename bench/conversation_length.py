@@ -3,12 +3,17 @@
 import argparse
 import hashlib
 import json
+import sys
 import time
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from transformers import AutoTokenizer
+
+# The API overrides the checkpoint's configured window, so take the limit from the API rather than rl_agent_config.json.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from app.main import MAX_LEN, MODEL_ID
 
 
 DEFAULT_FIXTURE = Path(__file__).resolve().parents[1] / "tests/fixtures/conversation_length.json"
@@ -25,7 +30,7 @@ def build_conversation(fixture, checkpoint):
 
 
 def decide(url, question_name, question, turns, timeout):
-    payload = json.dumps({"model": "convaiinnovations/laya", "state": turns, "questions": {question_name: question}}, ensure_ascii=False).encode()
+    payload = json.dumps({"model": MODEL_ID, "state": turns, "questions": {question_name: question}}, ensure_ascii=False).encode()
     request = Request(url, data=payload, headers={"Content-Type": "application/json"})
     start = time.perf_counter()
     try:
@@ -60,7 +65,6 @@ def main():
     args = parser.parse_args()
 
     fixture = json.loads(args.fixture.read_text())
-    config = json.loads((args.model_dir / "rl_agent_config.json").read_text())
     tokenizer = AutoTokenizer.from_pretrained(args.model_dir / "tokenizer", local_files_only=True)
     previous_turns = []
     rows = []
@@ -94,12 +98,12 @@ def main():
         raise AssertionError("short control did not establish that the final correction changes routing")
 
     prefix_tokens = rows[0]["base"]["used_tokens"] - rows[0]["raw_state_tokens"]
-    state_budget = config["max_len"] - prefix_tokens
+    state_budget = MAX_LEN - prefix_tokens
     first_rejected_base = next((row["checkpoint"] for row in rows if row["base"]["status"] == 400), None)
     first_rejected_correction = next((row["checkpoint"] for row in rows if row["with_final_correction"]["status"] == 400), None)
     first_ignored = next((row["checkpoint"] for row in rows if row["raw_state_tokens"] >= state_budget and row["correction_changed_output"] is False), None)
     print(json.dumps({"summary": {
-        "model_max_tokens": config["max_len"],
+        "model_max_tokens": MAX_LEN,
         "state_token_budget": state_budget,
         "first_sampled_rejected_base": first_rejected_base,
         "first_sampled_rejected_correction": first_rejected_correction,

@@ -11,6 +11,7 @@ from app.main import create_app, load_agent
 class FakeAgent:
     def __init__(self):
         self.calls = []
+        self.cfg = {"max_len": 1024, "head_max_len": 256}
 
     def predict(self, state, questions):
         self.calls.append((state, questions))
@@ -31,7 +32,7 @@ DECISIONS_ANSWERS = {
 }
 
 URL = "/api/alpha/decisions"
-MODEL = "convaiinnovations/laya"
+MODEL = "convaiinnovations/laya-multilingual"
 
 
 def test_load_agent_uses_cuda(monkeypatch):
@@ -45,6 +46,7 @@ def test_load_agent_uses_cuda(monkeypatch):
     monkeypatch.setitem(sys.modules, "laya", SimpleNamespace(load=load))
     assert load_agent().agent is agent
     assert calls == [("/opt/model", "cuda")]
+    assert agent.cfg == {"max_len": 4096, "head_max_len": 256}
 
 
 @pytest.mark.parametrize(
@@ -163,22 +165,32 @@ def test_startup_fails_if_model_does_not_load():
 
 def test_long_conversation_is_rejected_before_inference():
     from laya.agent import Agent
+    from laya.common import build_sequence
     from transformers import AutoTokenizer
 
     class TokenizedFakeAgent(FakeAgent):
         tok = AutoTokenizer.from_pretrained("/opt/model/tokenizer", local_files_only=True)
-        cfg = {"max_len": 512, "head_max_len": 192}
         _to_internal = staticmethod(Agent._to_internal)
 
     agent = TokenizedFakeAgent()
+    agent.cfg["max_len"] = api.MAX_LEN
     question = {"type": "choice", "instructions": "Which team should handle this?", "criteria": {"billing": "payments and refunds", "technical": "bugs and outages"}}
+
+    def state(repeats):
+        return "Please refund my duplicate payment. " + "A neutral follow-up. " * repeats
+
+    def tokens(repeats):
+        return len(build_sequence(agent.tok, state(repeats), Agent._to_internal(question), max_len=sys.maxsize, head_max_len=agent.cfg["head_max_len"])[0])
+
+    # Guard the fixtures: the accepted state must not fit the checkpoint's original window, and the rejected one must not fit the expanded one.
+    assert 1024 < tokens(400) <= api.MAX_LEN < tokens(1000)
     with TestClient(create_app(lambda: api.LengthCheckedAgent(agent))) as client:
-        short = client.post(URL, json={"model": MODEL, "state": "Please refund my duplicate payment.", "questions": {"q": question}})
-        assert short.status_code == 200
+        within = client.post(URL, json={"model": MODEL, "state": state(400), "questions": {"q": question}})
+        assert within.status_code == 200
         agent.calls.clear()
 
-        long = client.post(URL, json={"model": MODEL, "state": "Please refund my duplicate payment. " + "A neutral follow-up. " * 200, "questions": {"q": question}})
+        long = client.post(URL, json={"model": MODEL, "state": state(1000), "questions": {"q": question}})
         assert long.status_code == 400
         assert "'q'" in long.json()["error"]["message"]
-        assert "512" in long.json()["error"]["message"]
+        assert str(api.MAX_LEN) in long.json()["error"]["message"]
         assert agent.calls == []
