@@ -10,6 +10,7 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictStr
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -65,6 +66,47 @@ class DecisionsRequest(BaseModel):
     session_id: StrictStr | None = Field(default=None, max_length=256)
     trace: dict[str, Any] | None = None
     user: StrictStr | None = Field(default=None, max_length=256)
+
+
+class ChoiceAnswer(BaseModel):
+    type: Literal["choice"]
+    choice: str
+    confidence: float
+    probabilities: dict[str, float]
+
+
+class ScoreAnswer(BaseModel):
+    type: Literal["score"]
+    score: float
+    confidence: float
+    legend: dict[str, Guidance]
+    probabilities: dict[str, float]
+
+
+class NoulAnswer(BaseModel):
+    type: Literal["noul"]
+    noul: float
+
+
+class Usage(BaseModel):
+    input_tokens: int
+    output_tokens: int
+
+
+class DecisionsResponse(BaseModel):
+    id: str
+    model: str
+    answers: dict[str, Annotated[ChoiceAnswer | ScoreAnswer | NoulAnswer, Field(discriminator="type")]]
+    usage: Usage
+
+
+class ErrorBody(BaseModel):
+    code: int
+    message: str
+
+
+class ErrorResponse(BaseModel):
+    error: ErrorBody
 
 
 # Fields each answer type carries in the Decisions response; Laya's extensions are dropped.
@@ -143,6 +185,20 @@ def create_app(loader: Callable[[], Any] = load_agent) -> FastAPI:
 
     app = FastAPI(title="Laya Local API", lifespan=lifespan)
 
+    def openapi() -> dict[str, Any]:
+        if app.openapi_schema is None:
+            schema = get_openapi(title=app.title, version=app.version, routes=app.routes)
+            # Validation failures are remapped to the 400 error shape below, so FastAPI's default 422 would misdocument them.
+            for path in schema["paths"].values():
+                for operation in path.values():
+                    operation["responses"].pop("422", None)
+            for name in ("HTTPValidationError", "ValidationError"):
+                schema["components"]["schemas"].pop(name, None)
+            app.openapi_schema = schema
+        return app.openapi_schema
+
+    app.openapi = openapi
+
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError):
         return error_response(400, describe_validation_error(exc))
@@ -156,11 +212,18 @@ def create_app(loader: Callable[[], Any] = load_agent) -> FastAPI:
     async def internal_error(request: Request, exc: Exception):
         return error_response(500, "Internal Server Error")
 
-    @app.get("/healthz")
+    @app.get("/healthz", responses={500: {"model": ErrorResponse, "description": "Internal Server Error"}})
     async def healthz():
         return {"status": "ok"}
 
-    @app.post("/api/alpha/decisions")
+    @app.post(
+        "/api/alpha/decisions",
+        responses={
+            200: {"model": DecisionsResponse},
+            400: {"model": ErrorResponse, "description": "Invalid request, unknown model, or input over the token limit"},
+            500: {"model": ErrorResponse, "description": "Internal Server Error"},
+        },
+    )
     async def decisions(request: DecisionsRequest):
         if request.model != MODEL_ID:
             raise HTTPException(status_code=400, detail=f"{request.model} is not a valid model ID; this server serves {MODEL_ID}")
