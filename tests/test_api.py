@@ -120,6 +120,17 @@ def test_invalid_input_is_rejected(body):
         assert agent.calls == []
 
 
+def test_openapi_documents_actual_error_shape():
+    with TestClient(create_app(FakeAgent)) as client:
+        schema = client.get("/openapi.json").json()
+    responses = schema["paths"][URL]["post"]["responses"]
+    assert "422" not in responses
+    assert responses["200"]["content"]["application/json"]["schema"] == {"$ref": "#/components/schemas/DecisionsResponse"}
+    for code in ("400", "500"):
+        assert responses[code]["content"]["application/json"]["schema"] == {"$ref": "#/components/schemas/ErrorResponse"}
+    assert "HTTPValidationError" not in schema["components"]["schemas"]
+
+
 def test_unknown_route_uses_error_shape():
     with TestClient(create_app(FakeAgent)) as client:
         assert client.post("/predict", json={}).json() == {"error": {"code": 404, "message": "Not Found"}}
