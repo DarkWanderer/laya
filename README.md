@@ -13,7 +13,8 @@ docker run -d --name laya-local-api \
   --gpus all --read-only --tmpfs /tmp:rw,nosuid,nodev,size=1g \
   --cap-drop=ALL --security-opt=no-new-privileges \
   -p 127.0.0.1:8000:8000 laya-local-api:0.3.5-gpu
-curl --fail http://127.0.0.1:8000/healthz
+# the model loads before the port opens, so wait for it
+until curl -sf http://127.0.0.1:8000/healthz; do sleep 2; done
 
 curl --fail-with-body http://127.0.0.1:8000/api/alpha/decisions \
   -H 'Content-Type: application/json' \
