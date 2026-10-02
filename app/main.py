@@ -79,7 +79,7 @@ class ScoreAnswer(BaseModel):
     type: Literal["score"]
     score: float
     confidence: float
-    legend: dict[str, str]
+    legend: dict[str, Guidance]
     probabilities: dict[str, float]
 
 

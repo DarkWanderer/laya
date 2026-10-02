@@ -129,6 +129,9 @@ def test_openapi_documents_actual_error_shape():
     for code in ("400", "500"):
         assert responses[code]["content"]["application/json"]["schema"] == {"$ref": "#/components/schemas/ErrorResponse"}
     assert "HTTPValidationError" not in schema["components"]["schemas"]
+    # Laya echoes each score criterion into the legend, so structured criteria appear there too.
+    legend = schema["components"]["schemas"]["ScoreAnswer"]["properties"]["legend"]["additionalProperties"]
+    assert {"type": "object"} in [{"type": option.get("type")} for option in legend["anyOf"]]
 
 
 def test_unknown_route_uses_error_shape():
