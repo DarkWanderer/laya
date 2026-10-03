@@ -1,10 +1,10 @@
 # laya
 
-Local GPU-served HTTP API for the [Laya](https://github.com/NandhaKishorM/laya) multilingual decision model (`convaiinnovations/laya-multilingual`). It classifies text against caller-defined `choice`, `score` and `noul` (true/false probability) questions, and mirrors the request/response shape of OpenRouter's [Decisions API](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request).
+Local HTTP API for the [Laya](https://github.com/NandhaKishorM/laya) multilingual decision model (`convaiinnovations/laya-multilingual`). It classifies text against caller-defined `choice`, `score` and `noul` (true/false probability) questions, and mirrors the request/response shape of OpenRouter's [Decisions API](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request).
 
 ## Quickstart
 
-Requires Docker with NVIDIA GPU support.
+Requires Docker. Uses an NVIDIA GPU when available and falls back to CPU otherwise; the startup log reports which was detected. The command below uses `--gpus all`; on a host without NVIDIA container support, omit that flag, since Docker rejects it there.
 
 ```sh
 docker pull ghcr.io/darkwanderer/laya:latest

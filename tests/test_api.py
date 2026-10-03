@@ -35,7 +35,13 @@ URL = "/api/alpha/decisions"
 MODEL = "convaiinnovations/laya-multilingual"
 
 
-def test_load_agent_uses_cuda(monkeypatch):
+def fake_torch(cuda_available):
+    cuda = SimpleNamespace(is_available=lambda: cuda_available, get_device_name=lambda index: "Test GPU")
+    return SimpleNamespace(cuda=cuda)
+
+
+@pytest.mark.parametrize("cuda_available, device, message", [(True, "cuda", "GPU detected: Test GPU"), (False, "cpu", "No GPU detected")])
+def test_load_agent_selects_device(monkeypatch, caplog, cuda_available, device, message):
     calls = []
     agent = FakeAgent()
 
@@ -44,8 +50,11 @@ def test_load_agent_uses_cuda(monkeypatch):
         return agent
 
     monkeypatch.setitem(sys.modules, "laya", SimpleNamespace(load=load))
-    assert load_agent().agent is agent
-    assert calls == [("/opt/model", "cuda")]
+    monkeypatch.setitem(sys.modules, "torch", fake_torch(cuda_available))
+    with caplog.at_level("INFO", logger="uvicorn.error"):
+        assert load_agent().agent is agent
+    assert calls == [("/opt/model", device)]
+    assert message in caplog.text
     assert agent.cfg == {"max_len": 4096, "head_max_len": 256}
 
 

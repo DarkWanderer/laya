@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from contextlib import asynccontextmanager
 from sys import maxsize
 from typing import Annotated, Any, Callable, Literal
@@ -15,6 +16,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictStr
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+
+# Reuse uvicorn's logger so detection results show up in the server output without extra logging config.
+logger = logging.getLogger("uvicorn.error")
 
 MODEL_ID = "convaiinnovations/laya-multilingual"
 # The checkpoint ships a 1024-token window; its mmBERT encoder supports up to 8192, so longer conversations fit.
@@ -166,10 +170,20 @@ class LengthCheckedAgent:
         return self.agent.predict(state, questions)
 
 
+def select_device() -> str:
+    import torch
+
+    if torch.cuda.is_available():
+        logger.info("GPU detected: %s; running inference on cuda", torch.cuda.get_device_name(0))
+        return "cuda"
+    logger.info("No GPU detected; falling back to CPU inference")
+    return "cpu"
+
+
 def load_agent():
     import laya
 
-    agent = laya.load("/opt/model", device="cuda")
+    agent = laya.load("/opt/model", device=select_device())
     # Laya reads the window from cfg on every predict, so the override applies to inference and the length check alike.
     agent.cfg["max_len"] = MAX_LEN
     return LengthCheckedAgent(agent)
