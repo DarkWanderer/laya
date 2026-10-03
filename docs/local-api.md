@@ -1,6 +1,6 @@
 # Local Laya API
 
-This service runs the `laya-multilingual` checkpoint (the `multilingual` subfolder of `convaiinnovations/laya`) on an NVIDIA GPU. The image installs CUDA PyTorch and `laya==0.3.5`, and downloads checkpoint revision `1c5edc17a7acd8701df6fc341c0d179f1c62c982` during the build. Neither Python nor the model is installed on the host. Model startup uses local files with `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1`. The host needs an NVIDIA driver and Docker GPU support.
+This service runs the `laya-multilingual` checkpoint (the `multilingual` subfolder of `convaiinnovations/laya`) on an NVIDIA GPU when one is available, otherwise on CPU. Startup logs the detection result. The image installs CUDA PyTorch and `laya==0.3.5`, and downloads checkpoint revision `1c5edc17a7acd8701df6fc341c0d179f1c62c982` during the build. Neither Python nor the model is installed on the host. Model startup uses local files with `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1`. GPU use needs an NVIDIA driver and Docker GPU support on the host.
 
 The container has one worker and runs as an unprivileged user. The published port listens on the host's loopback address only. It has a read-only filesystem and a temporary `/tmp`; the run command mounts neither this folder nor the Docker socket.
 
