@@ -7,7 +7,7 @@ Local HTTP API for the [Laya](https://github.com/NandhaKishorM/laya) multilingua
 Requires Docker. Uses an NVIDIA GPU when available and falls back to CPU otherwise; the startup log reports which was detected. The command below uses `--gpus all`; on a host without NVIDIA container support, omit that flag, since Docker rejects it there.
 
 ```sh
-docker run -d --name laya-local-api \
+docker run -d --name laya-local-api --pull=always \
   --gpus all --read-only --tmpfs /tmp:rw,nosuid,nodev,size=1g \
   --cap-drop=ALL --security-opt=no-new-privileges \
   -p 127.0.0.1:8000:8000 ghcr.io/darkwanderer/laya:latest
