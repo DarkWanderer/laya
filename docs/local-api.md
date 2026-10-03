@@ -25,6 +25,8 @@ docker run --rm --gpus all --read-only --tmpfs /tmp:rw,nosuid,nodev,size=1g \
 
 ## Start
 
+Omit `--gpus all` on a host without NVIDIA container support: Docker rejects the flag there, and the service then runs on CPU.
+
 ```sh
 docker run -d --name laya-local-api \
   --gpus all --read-only --tmpfs /tmp:rw,nosuid,nodev,size=1g \
